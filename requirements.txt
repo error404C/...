@@ -1,0 +1,5 @@
+Flask==2.3.3
+python-telegram-bot==20.7
+selenium==4.15.2
+gunicorn==21.2.0
+werkzeug==2.3.7
