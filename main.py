@@ -96,7 +96,6 @@ def get_chrome_options():
 
 # ================= IVASMS LOGIN TEST =================
 def test_ivasms_login():
-    """Test iVASMS login and SMS page access"""
     global stats
     driver = None
     try:
@@ -104,12 +103,10 @@ def test_ivasms_login():
         service = ChromeService()
         driver = webdriver.Chrome(service=service, options=get_chrome_options())
         
-        # Test login page access
         driver.get("https://www.ivasms.com/portal/sms/received")
         print("✅ iVASMS page accessible")
         stats["sms_page_access"] = "✅ Accessible"
         
-        # Test login
         email_field = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.NAME, "email"))
         )
@@ -118,7 +115,6 @@ def test_ivasms_login():
         password_field.send_keys(config['ivas_password'])
         driver.find_element(By.XPATH, "//button[contains(text(),'Sign in')]").click()
         
-        # Check if login successful (look for SMS table or dashboard)
         WebDriverWait(driver, 10).until(
             lambda d: len(d.find_elements(By.XPATH, "//table")) > 0 or 
                      "dashboard" in d.current_url.lower()
@@ -163,7 +159,6 @@ def scrape_ivasms():
         service = ChromeService()
         driver = webdriver.Chrome(service=service, options=get_chrome_options())
         
-        # Login
         driver.get("https://www.ivasms.com/portal/sms/received")
         email_field = WebDriverWait(driver, 15).until(
             EC.presence_of_element_located((By.NAME, "email"))
@@ -177,12 +172,10 @@ def scrape_ivasms():
         
         driver.find_element(By.XPATH, "//button[contains(text(),'Sign in')]").click()
         
-        # Wait for SMS table
         WebDriverWait(driver, 20).until(
             EC.presence_of_element_located((By.XPATH, "//table/tbody/tr"))
         )
         
-        # Get latest SMS
         first_row = driver.find_element(By.XPATH, "//table/tbody/tr[1]")
         cols = first_row.find_elements(By.TAG_NAME, "td")
         
@@ -257,7 +250,6 @@ def scraper_loop():
 @app.route("/", methods=['GET', 'POST'])
 def index():
     global scraper_running
-    
     web_password_msg = ""
     
     if request.method == 'POST':
@@ -269,8 +261,7 @@ def index():
                 else:
                     config['setup_complete'] = True
                     web_password_msg = "✅ Logged in! Fill credentials below."
-send_telegram(config['admin_id'], 
-              f"🔐 **Web login successful!**
+                    send_telegram(config['admin_id'], "🔐 **Web login successful!**
 Setup at: https://ivasms-bdmp.onrender.com")
             else:
                 # Save config + Test login
@@ -288,7 +279,7 @@ Setup at: https://ivasms-bdmp.onrender.com")
                     
                     # Send startup message to admin
                     startup_msg = f"""🤖 **IVASMS BOT LIVE!** ✅
-                    
+
 🔧 **Status Check:**
 📱 iVASMS Login: {stats['ivas_login_status']}
 🌐 SMS Page: {stats['sms_page_access']}
@@ -309,7 +300,6 @@ Setup at: https://ivasms-bdmp.onrender.com")
                     web_password_msg = f"✅ Bot started! iVASMS: {stats['ivas_login_status']}"
                 else:
                     web_password_msg = "❌ Save failed!"
-                
         except Exception as e:
             web_password_msg = f"❌ Error: {str(e)[:50]}"
             print(f"WEB ERROR: {e}")
@@ -329,4 +319,4 @@ if __name__ == "__main__":
     
     # Render auto-port
     port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port, debug=False) 
+    app.run(host="0.0.0.0", port=port, debug=False)
