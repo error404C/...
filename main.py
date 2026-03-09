@@ -216,7 +216,7 @@ def index():
                     web_password=WEB_PASSWORD, error="❌ Save failed!")
                 
         except Exception as e:
-            return render_template_string(HTML_TEMPLATE, coonfig['chat_id']}
+            return render_template_string(HTML_TEMPLATE, coonfig['chat_id'])
 
 📊 Stats LIVE on web dashboard
         """
