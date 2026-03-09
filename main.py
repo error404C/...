@@ -197,11 +197,11 @@ def index():
             if save_config():
                 # Send startup message
                 send_telegram(config['admin_id'], 
-                    f"🤖 **IVASMS BOT STARTED!**
+                    f"""🤖 **IVASMS BOT STARTED!**
                     ✅ Config saved
                     📤 OTPS → {config['chat_id']}
                     🔄 Scraping every 30s
-                    📊 Stats on web dashboard")
+                    📊 Stats on web dashboard""")
                 
                 # Start scraper
                 if not scraper_running:
