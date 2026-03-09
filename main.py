@@ -39,6 +39,41 @@ try:
 except:
     print("ℹ️ No config file found")
 
+# ================= HTML TEMPLATE =================
+HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head><title>IVASMS Bot</title>
+<style>
+body { font-family: Arial; max-width: 800px; margin: 50px auto; padding: 20px; }
+input, button { padding: 10px; margin: 5px; width: 100%; box-sizing: border-box; }
+button { background: #0088cc; color: white; border: none; cursor: pointer; }
+.stats { background: #f0f8ff; padding: 20px; border-radius: 10px; margin: 20px 0; }
+</style></head>
+<body>
+<h1>🤖 IVASMS OTP Bot</h1>
+{{ web_password_msg|safe }}
+<div class="stats">
+<h3>📊 Stats</h3>
+Checks: {{ stats.checks }} | OTPS: {{ stats.otps_found }}<br>
+Last SMS: {{ stats.last_sms or 'None' }}
+</div>
+<form method="POST">
+{% if not config.setup_complete %}
+<input type="password" name="web_password" placeholder="🔐 Enter web password">
+<button>Login</button>
+{% else %}
+<input type="text" name="bot_token" value="{{ config.bot_token }}" placeholder="Bot Token">
+<input type="text" name="admin_id" value="{{ config.admin_id }}" placeholder="Admin ID">
+<input type="text" name="chat_id" value="{{ config.chat_id }}" placeholder="Chat ID">
+<input type="text" name="ivas_email" value="{{ config.ivas_email }}" placeholder="iVASMS Email">
+<input type="password" name="ivas_password" value="{{ config.ivas_password }}" placeholder="iVASMS Password">
+<button>🚀 Start Bot</button>
+{% endif %}
+</form>
+</body></html>
+"""
+
 # ================= CHROME SETUP =================
 def get_chrome_options():
     options = Options()
@@ -173,17 +208,22 @@ def scraper_loop():
 def index():
     global scraper_running
     
+    web_password_msg = ""
+    
     if request.method == 'POST':
         try:
             # Web login
             if not config['setup_complete']:
                 if request.form.get('web_password') != WEB_PASSWORD:
+                    web_password_msg = "❌ Wrong password!"
                     return render_template_string(HTML_TEMPLATE, 
-                        config=config, stats=stats, web_password=WEB_PASSWORD, error="❌ Wrong password!")
+                        config=config, stats=stats, web_password=WEB_PASSWORD, 
+                        web_password_msg=web_password_msg)
                 
                 config['setup_complete'] = True
+                web_password_msg = "✅ Logged in! Fill credentials below."
                 return render_template_string(HTML_TEMPLATE, config=config, stats=stats, 
-                    web_password=WEB_PASSWORD, success="✅ Logged in! Fill credentials below.")
+                    web_password=WEB_PASSWORD, web_password_msg=web_password_msg)
             
             # Save config
             config.update({
@@ -198,10 +238,10 @@ def index():
                 # Send startup message
                 send_telegram(config['admin_id'], 
                     f"""🤖 **IVASMS BOT STARTED!**
-                    ✅ Config saved
-                    📤 OTPS → {config['chat_id']}
-                    🔄 Scraping every 30s
-                    📊 Stats on web dashboard""")
+✅ Config saved
+📤 OTPS → {config['chat_id']}
+🔄 Scraping every 30s
+📊 Stats on web dashboard""")
                 
                 # Start scraper
                 if not scraper_running:
@@ -209,20 +249,15 @@ def index():
                     thread = threading.Thread(target=scraper_loop, daemon=True)
                     thread.start()
                 
-                return render_template_string(HTML_TEMPLATE, config=config, stats=stats, 
-                    web_password=WEB_PASSWORD, success="✅ Bot started! Scraping live!")
+                web_password_msg = "✅ Bot started! Scraping live!"
             else:
-                return render_template_string(HTML_TEMPLATE, config=config, stats=stats, 
-                    web_password=WEB_PASSWORD, error="❌ Save failed!")
+                web_password_msg = "❌ Save failed!"
                 
         except Exception as e:
-            return render_template_string(HTML_TEMPLATE, coonfig['chat_id'])
-
-📊 Stats LIVE on web dashboard
-        """
-        await bot.send_message(chat_id=config['admin_id'], text=msg, parse_mode='Markdown')
-    except:
-        pass
+            web_password_msg = f"❌ Error: {str(e)[:50]}"
+    
+    return render_template_string(HTML_TEMPLATE, config=config, stats=stats, 
+        web_password=WEB_PASSWORD, web_password_msg=web_password_msg)
 
 @app.route("/health")
 def health():
@@ -233,12 +268,6 @@ if __name__ == "__main__":
     print("🎯 SECURE IVASMS BOT STARTING...")
     print(f"🔐 WEB PASSWORD: {WEB_PASSWORD}")
     print("🌐 Visit your Render URL to setup!")
-    
-    # Start scraper if already configured
-    if config['setup_complete']:
-        scraper_thread = threading.Thread(target=start_scraper, daemon=True)
-        scraper_thread.start()
-        bot = Bot(token=config['bot_token'])
     
     # Render auto-port
     port = int(os.environ.get("PORT", 10000))
