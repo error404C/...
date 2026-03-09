@@ -269,7 +269,8 @@ def index():
                 else:
                     config['setup_complete'] = True
                     web_password_msg = "✅ Logged in! Fill credentials below."
-                    send_telegram(config['admin_id'], f"🔐 **Web login successful!**
+send_telegram(config['admin_id'], 
+              f"🔐 **Web login successful!**
 Setup at: https://ivasms-bdmp.onrender.com")
             else:
                 # Save config + Test login
