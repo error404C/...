@@ -24,7 +24,7 @@ print(f"🔐 WEB LOGIN PASSWORD: {WEB_PASSWORD}")
 print("🌐 Go to your Render URL and login!")
 
 config = {'setup_complete': False, 'bot_token': '', 'admin_id': '', 'chat_id': '', 'ivas_email': '', 'ivas_password': ''}
-stats = {"checks": 0, "otps_found": 0, "last_sms": None}
+stats = {"checks": 0, "otps_found": 0, "last_sms": None, "ivas_login_status": "Not Tested", "sms_page_access": "Not Tested"}
 last_scraped_message_id = None
 scraper_running = False
 
@@ -49,14 +49,21 @@ body { font-family: Arial; max-width: 800px; margin: 50px auto; padding: 20px; }
 input, button { padding: 10px; margin: 5px; width: 100%; box-sizing: border-box; }
 button { background: #0088cc; color: white; border: none; cursor: pointer; }
 .stats { background: #f0f8ff; padding: 20px; border-radius: 10px; margin: 20px 0; }
+.status { padding: 10px; margin: 5px 0; border-radius: 5px; }
+.success { background: #d4edda; color: #155724; }
+.error { background: #f8d7da; color: #721c24; }
 </style></head>
 <body>
 <h1>🤖 IVASMS OTP Bot</h1>
-{{ web_password_msg|safe }}
+{% if web_password_msg %}
+<div class="status {{ 'success' if '✅' in web_password_msg else 'error' }}">{{ web_password_msg|safe }}</div>
+{% endif %}
 <div class="stats">
-<h3>📊 Stats</h3>
-Checks: {{ stats.checks }} | OTPS: {{ stats.otps_found }}<br>
-Last SMS: {{ stats.last_sms or 'None' }}
+<h3>📊 LIVE Stats</h3>
+Checks: {{ stats.checks }} | OTPS Found: {{ stats.otps_found }}<br>
+Last SMS: {{ stats.last_sms or 'None' }}<br>
+iVASMS Login: {{ stats.ivas_login_status }}<br>
+SMS Page: {{ stats.sms_page_access }}
 </div>
 <form method="POST">
 {% if not config.setup_complete %}
@@ -68,7 +75,7 @@ Last SMS: {{ stats.last_sms or 'None' }}
 <input type="text" name="chat_id" value="{{ config.chat_id }}" placeholder="Chat ID">
 <input type="text" name="ivas_email" value="{{ config.ivas_email }}" placeholder="iVASMS Email">
 <input type="password" name="ivas_password" value="{{ config.ivas_password }}" placeholder="iVASMS Password">
-<button>🚀 Start Bot</button>
+<button>🚀 Start Bot + Test Login</button>
 {% endif %}
 </form>
 </body></html>
@@ -86,6 +93,47 @@ def get_chrome_options():
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option('useAutomationExtension', False)
     return options
+
+# ================= IVASMS LOGIN TEST =================
+def test_ivasms_login():
+    """Test iVASMS login and SMS page access"""
+    global stats
+    driver = None
+    try:
+        print("🔍 Testing iVASMS login...")
+        service = ChromeService()
+        driver = webdriver.Chrome(service=service, options=get_chrome_options())
+        
+        # Test login page access
+        driver.get("https://www.ivasms.com/portal/sms/received")
+        print("✅ iVASMS page accessible")
+        stats["sms_page_access"] = "✅ Accessible"
+        
+        # Test login
+        email_field = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.NAME, "email"))
+        )
+        email_field.send_keys(config['ivas_email'])
+        password_field = driver.find_element(By.NAME, "password")
+        password_field.send_keys(config['ivas_password'])
+        driver.find_element(By.XPATH, "//button[contains(text(),'Sign in')]").click()
+        
+        # Check if login successful (look for SMS table or dashboard)
+        WebDriverWait(driver, 10).until(
+            lambda d: len(d.find_elements(By.XPATH, "//table")) > 0 or 
+                     "dashboard" in d.current_url.lower()
+        )
+        print("✅ iVASMS login successful!")
+        stats["ivas_login_status"] = "✅ Logged In"
+        return True
+        
+    except Exception as e:
+        print(f"❌ iVASMS login failed: {str(e)[:100]}")
+        stats["ivas_login_status"] = f"❌ Failed: {str(e)[:50]}"
+        return False
+    finally:
+        if driver:
+            driver.quit()
 
 # ================= OTP FUNCTIONS =================
 def extract_otp_and_service(sms_text):
@@ -108,10 +156,10 @@ def scrape_ivasms():
         return None
         
     stats["checks"] += 1
+    print(f"🔍 Scraping iVASMS... (Check #{stats['checks']})")
     driver = None
     
     try:
-        print(f"🔍 Scraping iVASMS... (Check #{stats['checks']})")
         service = ChromeService()
         driver = webdriver.Chrome(service=service, options=get_chrome_options())
         
@@ -192,15 +240,17 @@ def save_config():
 # ================= SCRAPER LOOP =================
 def scraper_loop():
     global scraper_running
-    print("🚀 Scraper started!")
+    print("🚀 SCRAPER THREAD STARTED! Checking every 30s...")
     while scraper_running:
         try:
+            print(f"⏰ Scraper alive - Check #{stats['checks']}")
             if config.get('setup_complete') and config.get('bot_token'):
                 otp_message = scrape_ivasms()
                 if otp_message:
                     send_telegram(config['chat_id'], otp_message)
             time.sleep(30)
-        except:
+        except Exception as e:
+            print(f"❌ Scraper error: {e}")
             time.sleep(30)
 
 # ================= WEB PAGES =================
@@ -216,45 +266,52 @@ def index():
             if not config['setup_complete']:
                 if request.form.get('web_password') != WEB_PASSWORD:
                     web_password_msg = "❌ Wrong password!"
-                    return render_template_string(HTML_TEMPLATE, 
-                        config=config, stats=stats, web_password=WEB_PASSWORD, 
-                        web_password_msg=web_password_msg)
+                else:
+                    config['setup_complete'] = True
+                    web_password_msg = "✅ Logged in! Fill credentials below."
+                    send_telegram(config['admin_id'], f"🔐 **Web login successful!**
+Setup at: https://ivasms-bdmp.onrender.com")
+            else:
+                # Save config + Test login
+                config.update({
+                    'bot_token': request.form['bot_token'],
+                    'admin_id': request.form['admin_id'],
+                    'chat_id': request.form['chat_id'],
+                    'ivas_email': request.form['ivas_email'],
+                    'ivas_password': request.form['ivas_password']
+                })
                 
-                config['setup_complete'] = True
-                web_password_msg = "✅ Logged in! Fill credentials below."
-                return render_template_string(HTML_TEMPLATE, config=config, stats=stats, 
-                    web_password=WEB_PASSWORD, web_password_msg=web_password_msg)
-            
-            # Save config
-            config.update({
-                'bot_token': request.form['bot_token'],
-                'admin_id': request.form['admin_id'],
-                'chat_id': request.form['chat_id'],
-                'ivas_email': request.form['ivas_email'],
-                'ivas_password': request.form['ivas_password']
-            })
-            
-            if save_config():
-                # Send startup message
-                send_telegram(config['admin_id'], 
-                    f"""🤖 **IVASMS BOT STARTED!**
-✅ Config saved
+                if save_config():
+                    # Test iVASMS login
+                    login_ok = test_ivasms_login()
+                    
+                    # Send startup message to admin
+                    startup_msg = f"""🤖 **IVASMS BOT LIVE!** ✅
+                    
+🔧 **Status Check:**
+📱 iVASMS Login: {stats['ivas_login_status']}
+🌐 SMS Page: {stats['sms_page_access']}
 📤 OTPS → {config['chat_id']}
 🔄 Scraping every 30s
-📊 Stats on web dashboard""")
-                
-                # Start scraper
-                if not scraper_running:
-                    scraper_running = True
-                    thread = threading.Thread(target=scraper_loop, daemon=True)
-                    thread.start()
-                
-                web_password_msg = "✅ Bot started! Scraping live!"
-            else:
-                web_password_msg = "❌ Save failed!"
+📊 Dashboard: https://ivasms-bdmp.onrender.com"""
+                    
+                    send_telegram(config['admin_id'], startup_msg)
+                    
+                    # Start scraper
+                    print("🚀 STARTING SCRAPER THREAD...")
+                    if not scraper_running:
+                        scraper_running = True
+                        thread = threading.Thread(target=scraper_loop, daemon=True)
+                        thread.start()
+                        print("✅ SCRAPER THREAD ACTIVE!")
+                    
+                    web_password_msg = f"✅ Bot started! iVASMS: {stats['ivas_login_status']}"
+                else:
+                    web_password_msg = "❌ Save failed!"
                 
         except Exception as e:
             web_password_msg = f"❌ Error: {str(e)[:50]}"
+            print(f"WEB ERROR: {e}")
     
     return render_template_string(HTML_TEMPLATE, config=config, stats=stats, 
         web_password=WEB_PASSWORD, web_password_msg=web_password_msg)
